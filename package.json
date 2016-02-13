@@ -8,6 +8,7 @@
  , "repository" : "ELLIOTTCABLE/fixme-ninja"
 
  , "main"       : "./Library/fixme-ninja.js"
+ , "bin"        : {"fixme": "./Executables/fixme"}
 
  , "scripts": {
       "build"                  : "./Scripts/build.sh"

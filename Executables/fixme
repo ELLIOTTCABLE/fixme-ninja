@@ -1,0 +1,19 @@
+#!/usr/bin/env node
+"use strict"
+
+let ninja;
+try {
+   ninja = require('../')
+} catch (error) {
+   if (error.code !== 'MODULE_NOT_FOUND') throw error
+   console.error("-- Transpiled sources missing. You should run `npm install` "+
+      "before trying to use\n   this; in the meantime, the library will be "+
+      "transpiled on-the-fly.")
+           require('babel-register')
+   ninja = require('../Source/fixme-ninja.js')
+}
+
+const done = require('promise-done')
+
+ninja.executable()
+   .catch(done)
