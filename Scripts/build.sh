@@ -26,5 +26,5 @@ fi
 
 go () { [ -n "$print_commands" ] && puts '`` '"$*" >&2 ; "$@" || exit $? ;}
 
-babel --source-maps 'inline' --compact 'false' \
+go babel --source-maps 'inline' --compact 'false' \
    "$source_dir" --out-dir "$products_dir"

@@ -1,3 +1,4 @@
+/* @flow weak */
 import executable from './executable.js'
 
 import Debug from 'debug'
