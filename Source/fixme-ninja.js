@@ -1,4 +1,4 @@
-/* @flow weak */
+/* @flow */
 import executable from './executable.js'
 
 import Debug from 'debug'
@@ -7,7 +7,8 @@ const debug = Debug('fixme-ninja')
 import Git from 'nodegit'
 import pEvent from 'promisify-event'
 
-export default async function ninja(path){
+export default async function ninja(path:string) : Promise {
+   debug("Working in: %o", path)
    let repo = await Git.Repository.open(path)
    let commit = await repo.getHeadCommit()
    debug(`HEAD: ${commit.id().toString()}`)

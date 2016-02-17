@@ -1,3 +1,4 @@
+/* @flow */
 import spawn from 'child_process'
 
 import chai from 'chai'
