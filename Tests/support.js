@@ -4,11 +4,12 @@ const debug = Debug('fixme-ninja:tests:support')
 
 import pexec      from 'promise-exec'
 import path       from 'path'
-import fs         from 'fs'
-import mkdirp     from 'mkdirp'
+import _fs        from 'fs'
+import _mkdir     from 'mkdirp'
 import Bluebird   from 'bluebird'
 import _          from 'lodash'
-const  mkdir    = Bluebird.promisify(mkdirp)
+const  fs       = Bluebird.promisifyAll(_fs)
+const  mkdir    = Bluebird.promisify(_mkdir)
 
 import { Suite, Test, Hook } from 'mocha'
 
@@ -26,16 +27,35 @@ declare function before() : any
 declare function after() : any
 
 
+// Resolves to a boolean; `true` if the path exists *and* is a directory, and `false` if the path
+// does not exist. Rejects with an error otherwise.
+function directoryExists(path: string) : Promise {
+   return new Promise((resolve, reject) => {
+      fs.stat(path, (err, stat)=> {
+         if (null != err) {
+            debug("fs.stat threw: %o", err)
+            if (err.code === 'ENOENT') return resolve(false)
+            else                       return reject(err)
+         } else if (!stat.isDirectory()) {
+            const errNotDir =
+               new Error("Path exists, but is not a directory: " + path)
+            errNotDir.code = 'ENOTDIR'
+            errNotDir.path = dir
+            return reject(errNotDir)
+         } else {
+            return resolve(true)
+         }
+      })
+   })
+}
+
+if (null == Suite.rootWorkingDir)
+   Suite.rootWorkingDir = process.cwd()
+
 const module      = require('../package.json')
     , cwd         = process.cwd()
-    , working_dir = path.resolve(module.config.dirs.working)
 
-before(function(){
-   return mkdir(working_dir).then(function(){
-      debug("Changing to working dir: %s", working_dir)
-      process.chdir(working_dir)
-   })
-})
+Suite.rootWorkingDir = path.resolve(module.config.dirs.working)
 
 // This monkey-patches `beforeThis`-ish functionality into Mocha: `needs()` will register a `before`
 // hook onto the `Test` instance *itself*, specific to that `Test`. (Doesn't work as a fully-fledged
@@ -95,38 +115,51 @@ Test.prototype.beforeThis = function beforeThis(...fns: Array<()=>any>) : Test {
 
 // Indicates that this test needs to run commands in a test-specific directory. Tests flagged this
 // way have a directory created in `module.config.dirs.working` from the test's slug-ified name.
+//
+// This implicitly causes the test to execute asynchronously.
 //---
-// FIXME: ALL of the CDs are happening before any tests run. I'm an idiot.
-Test.prototype.needsDir = function needsDir(name:?string) : boolean {
-   this.enableBefores()
+// TODO: More flexible configuration / handling of Suite.workingDir
+// TODO: More flexible afterThis or something, instead of the hacky restorePWD
+Test.prototype.needsDir = function needsDir(name:?string) : Test {
+   const self          = this
+       , parent        = this.parent
+
+   if (null != this._needsDir)
+      return this
+
    if (null == this.slug)
-      this.slug = _.kebabCase(this.parent ? this.fullTitle() : this.title)
+      this.slug = _.kebabCase(parent ? this.fullTitle() : this.title)
 
-   const dir           = path.resolve(working_dir, name ? _.kebabCase(name) : this.slug)
+   if (parent && null == parent.workingDir)
+      parent.workingDir = Suite.rootWorkingDir
 
- //this.parent.beforeAll(function(){
- //   return mkdir(dir).then(function(){
- //      prev = process.cwd()
+   const original_body = this.fn
+       , previous_dir = process.cwd()
+       , parent_dir = parent ? parent.workingDir : process.cwd()
+       , dir = path.resolve(parent_dir, name ? _.kebabCase(name) : this.slug)
 
- //      debug("Changing to test dir: %s", dir)
- //      process.chdir(dir)
- //   })
- //})
- //this.parent.afterAll(function(){
- //   debug("Returning to dir: %s", prev)
- //   process.chdir(prev)
- //})
+   this.fn = function restorePWD(...args : Array<any>) {
+      const rv = original_body.apply(this, args)
+      process.chdir(previous_dir)
+      return rv
+   }
 
- //var isDirectory
- //try {
- //   isDirectory = fs.statSync(dir).isDirectory()
- //} catch (err) {
- //   if (err.code !== 'ENOENT') throw err
- //   return false
- //}
+   this.beforeThis(() => directoryExists(dir).then(exists => {
+      if (exists) {
+         debug(`Working-dir exists for ${this.slug} at: '${dir}'`)
+         this._needsDirInitialization = false
+         process.chdir(dir)
 
- //if (!isDirectory) throw new Error('y u is file doh,')
- //return true
+      } else return mkdir(dir).then( ()=> {
+         debug(`Working-dir created for ${this.slug} at: '${dir}'`)
+         this._needsDirInitialization = true
+         process.chdir(dir)
+         debug("Changed to test dir, now in: %s", process.cwd())
+      })
+   }) )
+
+   this._needsDir = true
+   return this
 }
 
 

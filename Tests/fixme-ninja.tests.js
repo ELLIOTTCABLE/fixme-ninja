@@ -6,6 +6,7 @@ const debug = Debug('fixme-ninja:tests')
 import ninja from '../'
 
 
+import fs from 'fs'
 import { Suite, Test } from 'mocha'
 
 describe("Meta", function(){
@@ -61,6 +62,7 @@ describe("Meta", function(){
             const test = new Test('foo', ()=>{})
 
             should.not.exist(test._before)
+            should.not.exist(test._hasBecomeAsync)
             should.not.exist(test.fn._callsBefores)
          })
 
@@ -250,10 +252,6 @@ describe("Meta", function(){
 
       })
       describe("Test::needsDir()", function(){
-         var sandbox
-
-         beforeEach( ()=> sandbox = sinon.sandbox.create() )
-         afterEach ( ()=> sandbox.restore()                )
 
          it("exists", function(){
             const test = new Test()
@@ -267,17 +265,12 @@ describe("Meta", function(){
             ~function(){ test.needsDir() }.should.not.throw()
          })
 
-         it("throws when there is no test body", function(){
-            const test = new Test()
-
-            ~function(){ test.needsDir() }.should.throw()
-         })
-
          it("doesn't stomp on any existing Mocha functionality", function(){
             const test = new Test('foo', ()=>{})
 
             should.not.exist(test.slug)
-            should.not.exist(test.fn._callsBefores)
+            should.not.exist(test._needsDir)
+            should.not.exist(test._needsDirInitialization)
          })
 
          it("enables before-hooks", function(){
@@ -295,22 +288,141 @@ describe("Meta", function(){
             test.should.have.property('slug', 'foo-bar')
          })
 
-         it.skip("adds a before-hook specific to the test", function(){
+         it("adds a before-hook specific to the test", function(){
             const test = new Test('foo', ()=>{})
 
             test.needsDir()
-            test._before.should.not.be.empty()
+            test._before.should.not.be.empty
          })
 
-         describe("The before-hook", function(){
-            it.skip("...", function(){
-               const test = new Test('foo', ()=>{})
+         describe("The directory-changing hooks", function(){
+            var sandbox
+
+            beforeEach( ()=> sandbox = sinon.sandbox.create() )
+            afterEach ( ()=> sandbox.restore()                )
+
+            const successful_chdir = ()=>
+               sandbox.stub(process, 'chdir').returns()
+            const failing_chdir = ()=> {
+               const ENOENT = new Error(); ENOENT.code = 'ENOENT'
+               return sandbox.stub(process, 'chdir').throws(ENOENT)
+            }
+            const existing_stat = ()=>
+               sandbox.stub(fs, 'stat').yields(null, { isDirectory: ()=> true })
+            const missing_stat = ()=> {
+               const ENOENT = new Error(); ENOENT.code = 'ENOENT'
+               return sandbox.stub(fs, 'stat').yields(ENOENT)
+            }
+
+            it("doesn't throw", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = existing_stat()
+                   , test = new Test('foo', ()=>{})
 
                test.needsDir()
-            })
+               ~function(){ test.fn() }.should.not.throw()
+            }))
+
+            it("is asynchronous", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = existing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               const rv = test.fn()
+               should.exist(rv)
+               should.exist(rv.then)
+            }))
+
+            it("resolves when the directory exists", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = existing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().should.be.fulfilled
+            }))
+
+            it("still executes the original body of the test", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = existing_stat()
+                   , body = sinon.spy()
+                   , test = new Test('foo', body)
+
+               test.needsDir()
+               return test.fn().then( ()=> {
+                  body.should.have.been.calledOnce
+               })
+            }))
+
+            it("asserts whether directory-initialization is necessary", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = existing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().then( ()=> {
+                  should.exist(test._needsDirInitialization)
+                  test._needsDirInitialization.should.be.false
+               })
+            }))
+
+            it("rejects when the directory is a file", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , stat = sandbox.stub(fs, 'stat').yields(null, { isDirectory: ()=> false })
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().should.be.rejected
+            }))
+
+            it("creates the working directory if it doesn't exist", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , mkdir = sandbox.stub(fs, 'mkdir').yields(null)
+                   , stat = missing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().then( ()=> {
+                  mkdir.should.have.been.calledOnce
+               })
+            }))
+
+            it("rejects if the directory could not be created", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , mkdir = sandbox.stub(fs, 'mkdir').yields(new Error())
+                   , stat = missing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().should.be.rejected
+            }))
+
+            it("indicates directory-initialization is necessary after creating", sinon.test(function(){
+               const chdir = successful_chdir()
+                   , mkdir = sandbox.stub(fs, 'mkdir').yields(null)
+                   , stat = missing_stat()
+                   , test = new Test('foo', ()=>{})
+
+               test.needsDir()
+               return test.fn().then( ()=> {
+                  should.exist(test._needsDirInitialization)
+                  test._needsDirInitialization.should.be.true
+               })
+            }))
+
+            it("works!", function(){
+               debug('CWD: %o', process.cwd())
+               const test = new Test('yay!', ()=>{})
+
+               test.needsDir()
+               return test.fn().then( ()=> {
+                  debug('CWD, inside: %o', process.cwd())
+                  fs.existsSync('yay').should.be.true
+               })
+            }).needsDir()
+
          })
       })
    })
 })
-
-setTimeout(()=> run(), 0)
