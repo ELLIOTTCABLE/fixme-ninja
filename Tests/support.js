@@ -2,14 +2,14 @@
 import Debug from 'debug'
 const debug = Debug('fixme-ninja:tests:support')
 
-import pexec      from 'promise-exec'
-import path       from 'path'
-import _fs        from 'fs'
-import _mkdir     from 'mkdirp'
-import Bluebird   from 'bluebird'
-import _          from 'lodash'
-const  fs       = Bluebird.promisifyAll(_fs)
-const  mkdir    = Bluebird.promisify(_mkdir)
+import child_process from 'child_process'
+import path          from 'path'
+import _fs           from 'fs'
+import _mkdir        from 'mkdirp'
+import Bluebird      from 'bluebird'
+import _             from 'lodash'
+const  fs          = Bluebird.promisifyAll(_fs)
+const  mkdir       = Bluebird.promisify(_mkdir)
 
 import { Suite, Test, Hook } from 'mocha'
 
@@ -85,19 +85,14 @@ Test.prototype.enableBefores = function enableBefores() : Test {
          }
 
          if (self._before.length > 0) {
-            debug(`callBefore: '${self.title}' @${self._before.length}`)
-
             const next = self._before.shift()
                 , rv   = next.apply(this, args)
 
             if (rv && typeof rv.then == 'function'){
-               debug(`callBefore: '${self.title}' @${self._before.length} was async`)
                self._hasBecomeAsync = true
                return rv.then( ()=> callBefores.apply(this, args) )
-            }
-            else return defer(callBefores)
-         }
-         else return defer(original_body)
+            } else return defer(callBefores)
+         } else return defer(original_body)
 
       }
       this.fn._callsBefores = true
@@ -167,52 +162,33 @@ Test.prototype.needsDir = function needsDir(name:?string) : Test {
 // `needs()` of a test within this Suite.
 //---
 // TODO: Support nested Suites.
-Suite.prototype.eachNeeds =
-function eachNeeds(first: (string | ()=>any), ...commands: Array<string>) : void {
-   if (null == this._eachNeeds)
-      this._eachNeeds = []
-
-   if (typeof first == 'string')
-      commands.unshift(first)
-   else
-      this._eachNeeds.unshift(first)
-
-   if (commands.length)
-      this._eachNeeds = this._eachNeeds.concat(commands.map(function(str){
-         const command = ()=> pexec(str)
-         command.command = str
-         return command
-      }))
+Suite.prototype.setupEach =
+function setupEach(...commands){
+   this._setupEachCommands = (this._setupEachCommands || []).concat(commands)
 }
 
-/* Adds a beforeAll that runs the specified commands. */
-Test.prototype.needs =
-function needs(first: (string | ()=>any), ...commands: Array<string>){
-   const already_cached = this.cd()
+Test.prototype.setup =
+function setup(...commands){
+   const self          = this
+       , parent        = this.parent
 
-   if (!already_cached) {
-      debug("Scheduling re-creation for '%s'", this.title)
-      var needs = []
-      if (this.parent._eachNeeds)
-         needs = needs.concat(this.parent._eachNeeds)
+   if (null == this._setupCommands && parent && parent._setupEachCommands)
+      commands = parent._setupEachCommands.concat(commands)
 
-      if (typeof first == 'string')
-         commands.unshift(first)
-      else
-         needs.unshift(first)
+   this._setupCommands = true
 
-      if (commands.length)
-         needs = needs.concat(commands.map(function(str){
-            const command = ()=> pexec(str)
-            command.command = str
-            return command
-         }))
+   if (commands.length) {
+      this.needsDir()
 
-      debug("'%s' needs: %o", this.title, needs)
-
-      needs.forEach(need =>
-         this.parent.beforeAll(`'${this.title}': ${need.command}`, need) )
+      commands.forEach(command => this.beforeThis( ()=> new Promise( (resolve, reject)=> {
+         child_process.exec(command, {}, (err, stdout, stderr)=> {
+            if (err) reject(err)
+            else     resolve(stdout)
+         })
+      })))
    }
+
+   return this
 }
 
 export { should, sinon }

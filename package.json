@@ -76,7 +76,5 @@
     , "sinon-as-promised"      : "^4.0.0"
 
     , "chokidar-cli"           : "^1.2.0"
-
-    , "promise-exec"           : "^0.1.0"
    }
 }

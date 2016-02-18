@@ -3,12 +3,30 @@ import { should, sinon } from './support.js'
 import Debug from 'debug'
 const debug = Debug('fixme-ninja:tests')
 
-import ninja from '../'
-
 import fs from 'fs'
+import child_process from 'child_process'
 import { Suite, Test } from 'mocha'
 
 describe("Meta", function(){
+//   describe("`git` support-function", function(){
+//
+//      it("evaluates", function(){
+//         (_=>{ git('show') }).should.not.throw()
+//      })
+//
+//      it("returns a Promise", function(){
+//         git('show').should.be.an.instanceof(Promise)
+//      })
+//
+//      it("resolves on completion", function(){
+//         return git('show').should.be.fulfuilled
+//      })
+//
+//      it("rejects on failure", function(){
+//         return git('show', 'deadbeef').should.be.rejected
+//      })
+//
+//   })
 
    describe("Mocha monkey-patching", function(){
       describe("Test::enableBefores()", function(){
@@ -392,17 +410,97 @@ describe("Meta", function(){
             }))
 
             it("works!", function(){
-               debug('CWD: %o', process.cwd())
                const test = new Test('yay!', ()=>{})
 
                test.needsDir()
-               return test.fn().then( ()=> {
-                  debug('CWD, inside: %o', process.cwd())
-                  fs.existsSync('yay').should.be.true
-               })
+               return test.fn().then( ()=> fs.existsSync('yay').should.be.true )
             }).needsDir()
+         }) // directory-changing hooks
 
+      }) // Test::needsDir()
+      describe("Test::setup()", function(){
+         var sandbox
+
+         beforeEach( ()=> sandbox = sinon.sandbox.create() )
+         afterEach ( ()=> sandbox.restore()                )
+
+         const successful_chdir = ()=>
+            sandbox.stub(process, 'chdir').returns()
+         const failing_chdir = ()=> {
+            const ENOENT = new Error(); ENOENT.code = 'ENOENT'
+            return sandbox.stub(process, 'chdir').throws(ENOENT)
+         }
+         const existing_stat = ()=>
+            sandbox.stub(fs, 'stat').yields(null, { isDirectory: ()=> true })
+         const missing_stat = ()=> {
+            const ENOENT = new Error(); ENOENT.code = 'ENOENT'
+            return sandbox.stub(fs, 'stat').yields(ENOENT)
+         }
+
+         it("exists", function(){
+            const test = new Test()
+
+            should.exist(test.setup)
          })
+
+         it("doesn't throw", function(){
+            const test = new Test('foo', ()=>{})
+
+            ~function(){ test.setup() }.should.not.throw()
+         })
+
+       //it("doesn't stomp on any existing Mocha functionality", function(){
+       //   const test = new Test('foo', ()=>{})
+
+       //   should.not.exist(test.slug)
+       //   should.not.exist(test._needsDir)
+       //   should.not.exist(test._needsDirInitialization)
+       //})
+
+         it("depends upon the test having a working dir", function(){
+            const test = new Test('foo', ()=>{})
+                , needsDir = sinon.spy(test, 'needsDir')
+
+            test.setup('true')
+            needsDir.should.have.been.calledOnce
+         })
+
+         it("adds a test-specific before-hook for each command", function(){
+            const test = new Test('foo', ()=>{})
+
+            test.needsDir()
+            const length = test._before.length
+
+            test.setup('hello', 'world')
+            test._before.should.not.be.empty
+            test._before.length.should.equal(length + 2)
+         })
+
+         it("invokes each command!", function(){
+            const test = new Test('bar', ()=>{})
+                  test.enableBefores()
+
+            const needsDir = sinon.stub(test, 'needsDir')
+                , exec = sandbox.stub(child_process, 'exec').yields(null, '')
+
+            test.setup('hello', 'world')
+            return test.fn().then( ()=> exec.should.have.been.calledTwice )
+         })
+
+         it("works! (successful)", function(){
+            const test = new Test('omg!', ()=>{})
+
+            test.setup('true')
+            return test.fn().should.be.fulfilled
+         }).needsDir()
+
+         it("works! (failure)", function(){
+            const test = new Test('wtf!', ()=>{})
+
+            test.setup('false')
+            return test.fn().should.be.rejected
+         }).needsDir()
+
       })
-   })
-})
+   }) // Mocha
+}) // Meta
