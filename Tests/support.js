@@ -131,7 +131,9 @@ Test.prototype.needsDir = function needsDir(name:?string) : Test {
    const original_body = this.fn
        , previous_dir = process.cwd()
        , parent_dir = parent ? parent.workingDir : process.cwd()
-       , dir = path.resolve(parent_dir, name ? _.kebabCase(name) : this.slug)
+
+   if (null == this.dir)
+      this.dir = path.resolve(parent_dir, name ? _.kebabCase(name) : this.slug)
 
    this.fn = function restorePWD(...args : Array<any>) {
       const rv = original_body.apply(this, args)
@@ -139,16 +141,16 @@ Test.prototype.needsDir = function needsDir(name:?string) : Test {
       return rv
    }
 
-   this.beforeThis(() => directoryExists(dir).then(exists => {
+   this.beforeThis(() => directoryExists(this.dir).then(exists => {
       if (exists) {
-         debug(`Working-dir exists for ${this.slug} at: '${dir}'`)
+         debug(`Working-dir exists for ${this.slug} at: '${this.dir}'`)
          this._needsDirInitialization = false
-         process.chdir(dir)
+         process.chdir(this.dir)
 
-      } else return mkdir(dir).then( ()=> {
-         debug(`Working-dir created for ${this.slug} at: '${dir}'`)
+      } else return mkdir(this.dir).then( ()=> {
+         debug(`Working-dir created for ${this.slug} at: '${this.dir}'`)
          this._needsDirInitialization = true
-         process.chdir(dir)
+         process.chdir(this.dir)
          debug("Changed to test dir, now in: %s", process.cwd())
       })
    }) )
