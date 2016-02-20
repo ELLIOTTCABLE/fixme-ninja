@@ -42,7 +42,7 @@ function find_fixmes(string){
    let i
 
    while (true) {
-      i = string.indexOf('FIXME:', i)
+      i = string.indexOf('FIXME:', i + 1)
       if (i === -1) break
       indices.push(i)
    }
