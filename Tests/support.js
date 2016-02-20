@@ -39,8 +39,8 @@ function directoryExists(path: string) : Promise {
          } else if (!stat.isDirectory()) {
             const errNotDir =
                new Error("Path exists, but is not a directory: " + path)
-            errNotDir.code = 'ENOTDIR'
-            errNotDir.path = dir
+            // FIXTYPE: I think Flow wants me to create a new Error class, here.
+            errNotDir.code = 'ENOTDIR'; errNotDir.path = dir
             return reject(errNotDir)
          } else {
             return resolve(true)

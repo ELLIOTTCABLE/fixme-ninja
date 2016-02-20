@@ -26,6 +26,6 @@ fi
 
 go () { [ -n "$print_commands" ] && puts '`` '"$*" >&2 ; "$@" || exit $? ;}
 
-go mocha --compilers js:babel-register                                \
+go mocha --compilers js:babel-register                                        \
    --reporter "$mocha_reporter" --ui "$mocha_ui"                              \
    "$unit_dir"/*.tests.js "$@"
