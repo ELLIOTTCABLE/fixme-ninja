@@ -5,39 +5,14 @@ import Debug from 'debug'
 const debug = Debug('fixme-ninja')
 
 import Git from 'nodegit'
-import pEvent from 'promisify-event'
+import Kit from 'nodegit-kit'
 
-export default async function ninja(path:string) : Promise {
-   debug("Working in: %o", path)
-   let repo = await Git.Repository.open(path)
-   let commit = await repo.getHeadCommit()
-   debug(`HEAD: ${commit.id().toString()}`)
 
-   let tree = await commit.getTree()
-   let walker = tree.walk()
-   let entries = pEvent(walker, 'end')
-   walker.start()
-
-   await Promise.all((await entries).map(async entry => {
-
-      if (entry.isTree()) {
-         debug(`Tree: ${entry.path()}`)
-         let tree = await entry.getTree()
-
-      } else { // isBlob()
-         debug(`Blob: ${entry.path()}`)
-         let blob = await entry.getBlob()
-         console.log(entry.filename(), entry.sha(), blob.rawsize() + "b")
-         console.log(blob.toString().split("\n").slice(0, 10).join("\n"))
-         let indices = find_fixmes(blob.toString())
-         console.log(indices)
-
-      }
-   }))
-}
+var support = {}
 
 // FIXME: Make this less fucking ugly.
-function find_fixmes(string){
+const find_fixmes = support.find_fixmes =
+function find_fixmes(string: string) : Array<number> {
    const indices = []
    let i
 
@@ -50,4 +25,30 @@ function find_fixmes(string){
    return indices
 }
 
-export { executable }
+const is_bare = support.is_bare =
+async function is_bare(repo: Git.Repository) : Promise {
+   try {
+      const value = await Kit.config.get(repo, 'core.bare')
+      if (value === 'true')  return true
+      if (value === 'false') return false
+      else throw new Error(`Unknown configuration value for 'core.bare': "${value}"`)
+   } catch (err) {
+      if (err.message !== "Config value 'core.bare' was not found") throw err
+      else return null
+   }
+}
+
+
+export { executable, support }
+
+export default
+async function ninja(path = '.': string) : Promise {
+   const repo = await Git.Repository.open(path)
+       , bare = await is_bare(repo)
+
+   if (bare) {
+
+   } else {
+
+   }
+}
